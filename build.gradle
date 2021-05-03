@@ -1,0 +1,52 @@
+import com.bmuschko.gradle.docker.tasks.container.DockerCreateContainer
+import com.bmuschko.gradle.docker.tasks.container.DockerLogsContainer
+import com.bmuschko.gradle.docker.tasks.container.DockerRemoveContainer
+import com.bmuschko.gradle.docker.tasks.container.DockerStartContainer
+import com.bmuschko.gradle.docker.tasks.container.DockerWaitContainer
+import com.bmuschko.gradle.docker.tasks.image.DockerBuildImage
+
+plugins {
+    id 'com.bmuschko.docker-remote-api' version '6.7.0'
+}
+
+group 'org.example'
+version '1.0-SNAPSHOT'
+
+// Create the image we will need later - this is where the bug is, the `upToDateWhen` is
+// overly permissive.
+task buildMyImage(type: DockerBuildImage) {
+    inputDir.set file('docker')
+
+    images.add('example/image')
+}
+
+// ----
+// Assume some indirection between above and below, such that it isn't sufficient to reference
+// the `buildMyImage.imageId` value. This could be a different Dockerfile with its own FROM, etc
+// ----
+String name = UUID.randomUUID().toString()
+task createContainer(type: DockerCreateContainer) {
+    inputs.files buildMyImage.outputs.files
+
+    // in theory we could use the imageId above, but instead we are deliberately using the declared tag
+    targetImageId 'example/image'
+    containerName.set name
+}
+task startContainer(type: DockerStartContainer) {
+    dependsOn(createContainer)
+    containerId.set name
+}
+task waitForContainer(type: DockerWaitContainer) {
+    dependsOn(startContainer)
+    containerId.set name
+}
+task removeContainer(type: DockerRemoveContainer) {
+    dependsOn(createContainer)
+    containerId.set name
+}
+task showLogs(type: DockerLogsContainer) {
+    dependsOn(waitForContainer)
+    finalizedBy(removeContainer)
+
+    containerId.set name
+}
